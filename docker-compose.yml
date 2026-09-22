@@ -1,0 +1,145 @@
+services:
+
+  # ==================== DEV ====================
+
+  customer-db-dev:
+    image: postgres:16-alpine
+    container_name: customer-db-dev
+    profiles:
+      - dev
+    environment:
+      POSTGRES_DB: customer_dev
+      POSTGRES_USER: customer_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - customer-dev-db-data:/var/lib/postgresql/data
+    networks:
+      - customer-dev-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U customer_user -d customer_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  customer-app-dev:
+    image: customer-app:${VERSION}
+    container_name: customer-app-dev
+    profiles:
+      - dev
+    env_file:
+      - config/dev.env
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      customer-db-dev:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    networks:
+      - customer-dev-net
+
+
+  # ==================== UAT ====================
+
+  customer-db-uat:
+    image: postgres:16-alpine
+    container_name: customer-db-uat
+    profiles:
+      - uat
+    environment:
+      POSTGRES_DB: customer_uat
+      POSTGRES_USER: customer_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - customer-uat-db-data:/var/lib/postgresql/data
+    networks:
+      - customer-uat-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U customer_user -d customer_uat"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  customer-app-uat:
+    image: customer-app:${VERSION}
+    container_name: customer-app-uat
+    profiles:
+      - uat
+    env_file:
+      - config/uat.env
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      customer-db-uat:
+        condition: service_healthy
+    ports:
+      - "8082:8080"
+    networks:
+      - customer-uat-net
+
+
+  # ==================== PROD ====================
+
+  customer-db-prod:
+    image: postgres:16-alpine
+    container_name: customer-db-prod
+    profiles:
+      - prod
+    environment:
+      POSTGRES_DB: customer_prod
+      POSTGRES_USER: customer_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - customer-prod-db-data:/var/lib/postgresql/data
+    networks:
+      - customer-prod-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U customer_user -d customer_prod"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  customer-app-prod:
+    image: customer-app:${VERSION}
+    container_name: customer-app-prod
+    profiles:
+      - prod
+    env_file:
+      - config/prod.env
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      customer-db-prod:
+        condition: service_healthy
+    ports:
+      - "8083:8080"
+    networks:
+      - customer-prod-net
+
+
+# ==================== NETWORKS ====================
+
+networks:
+
+  customer-dev-net:
+    name: customer-dev-net
+
+  customer-uat-net:
+    name: customer-uat-net
+
+  customer-prod-net:
+    name: customer-prod-net
+
+
+# ==================== VOLUMES ====================
+
+volumes:
+
+  customer-dev-db-data:
+    name: customer-dev-db-data
+
+  customer-uat-db-data:
+    name: customer-uat-db-data
+
+  customer-prod-db-data:
+    name: customer-prod-db-data
