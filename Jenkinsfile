@@ -38,7 +38,6 @@ pipeline {
 
     stages {
 
-
         stage('Resolve Deployment Configuration') {
 
             steps {
@@ -55,9 +54,7 @@ pipeline {
                         env.HOST_PORT = '8081'
                         env.ENV_VALUE = 'DEV'
 
-                    }
-
-                    else if (params.ENVIRONMENT == 'UAT') {
+                    } else if (params.ENVIRONMENT == 'UAT') {
 
                         env.GIT_BRANCH_NAME = 'release'
                         env.APP_CONTAINER = 'customer-app-uat'
@@ -67,9 +64,7 @@ pipeline {
                         env.HOST_PORT = '8082'
                         env.ENV_VALUE = 'UAT'
 
-                    }
-
-                    else {
+                    } else {
 
                         env.GIT_BRANCH_NAME = 'main'
                         env.APP_CONTAINER = 'customer-app-prod'
@@ -107,7 +102,7 @@ pipeline {
                     echo "Version        : ${params.VERSION}"
                     echo "Git Branch     : ${env.GIT_BRANCH_NAME}"
                     echo "App Container  : ${env.APP_CONTAINER}"
-                    echo "DB Container    : ${env.DB_CONTAINER}"
+                    echo "DB Container   : ${env.DB_CONTAINER}"
                     echo "Network        : ${env.NETWORK_NAME}"
                     echo "Host Port      : ${env.HOST_PORT}"
                     echo "Environment Val: ${env.ENV_VALUE}"
@@ -214,6 +209,7 @@ pipeline {
                         set "DB_PASSWORD=%DB_PASSWORD%"
 
                         echo Using Docker Compose:
+
                         "C:\\Users\\Administrator\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker-compose.exe" version
 
                         echo Stopping existing environment...
@@ -244,7 +240,7 @@ pipeline {
                 echo "Waiting for containers to start..."
 
                 bat """
-                    timeout /t 20 /nobreak
+                    ping 127.0.0.1 -n 21 > nul
                 """
 
 
@@ -359,7 +355,7 @@ pipeline {
                 echo "Waiting for rollback containers..."
 
                 bat """
-                    timeout /t 20 /nobreak
+                    ping 127.0.0.1 -n 21 > nul
                 """
 
 
