@@ -38,35 +38,33 @@ pipeline {
     stages {
 
         stage('Resolve Deployment Configuration') {
-
             steps {
-
                 script {
 
                     if (params.ENVIRONMENT == 'DEV') {
 
                         env.GIT_BRANCH_NAME = 'develop'
-                        env.PROFILE = 'dev'
                         env.APP_CONTAINER = 'customer-app-dev'
                         env.DB_CONTAINER = 'customer-db-dev'
+                        env.COMPOSE_SERVICES = 'customer-db-dev customer-app-dev'
                         env.NETWORK_NAME = 'customer-dev-net'
                         env.HOST_PORT = '8081'
 
                     } else if (params.ENVIRONMENT == 'UAT') {
 
                         env.GIT_BRANCH_NAME = 'release'
-                        env.PROFILE = 'uat'
                         env.APP_CONTAINER = 'customer-app-uat'
                         env.DB_CONTAINER = 'customer-db-uat'
+                        env.COMPOSE_SERVICES = 'customer-db-uat customer-app-uat'
                         env.NETWORK_NAME = 'customer-uat-net'
                         env.HOST_PORT = '8082'
 
                     } else {
 
                         env.GIT_BRANCH_NAME = 'main'
-                        env.PROFILE = 'prod'
                         env.APP_CONTAINER = 'customer-app-prod'
                         env.DB_CONTAINER = 'customer-db-prod'
+                        env.COMPOSE_SERVICES = 'customer-db-prod customer-app-prod'
                         env.NETWORK_NAME = 'customer-prod-net'
                         env.HOST_PORT = '8083'
                     }
@@ -75,9 +73,7 @@ pipeline {
                         params.ENVIRONMENT == 'PRODUCTION' &&
                         params.CONFIRM_PROD != 'YES'
                     ) {
-                        error(
-                            'Production deployment requires CONFIRM_PROD=YES'
-                        )
+                        error('Production deployment requires CONFIRM_PROD=YES')
                     }
 
                     if (!params.VERSION?.trim()) {
@@ -85,26 +81,21 @@ pipeline {
                     }
 
                     echo "========== DEPLOYMENT CONFIGURATION =========="
-
-                    echo "Environment  : ${params.ENVIRONMENT}"
-                    echo "Action       : ${params.ACTION}"
-                    echo "Version      : ${params.VERSION}"
-                    echo "Git Branch   : ${env.GIT_BRANCH_NAME}"
-                    echo "Docker Profile: ${env.PROFILE}"
-                    echo "App Container: ${env.APP_CONTAINER}"
-                    echo "DB Container : ${env.DB_CONTAINER}"
-                    echo "Network      : ${env.NETWORK_NAME}"
-                    echo "Host Port    : ${env.HOST_PORT}"
-                    echo "Run Tests    : ${params.RUN_TESTS}"
-
+                    echo "Environment   : ${params.ENVIRONMENT}"
+                    echo "Action        : ${params.ACTION}"
+                    echo "Version       : ${params.VERSION}"
+                    echo "Git Branch    : ${env.GIT_BRANCH_NAME}"
+                    echo "App Container : ${env.APP_CONTAINER}"
+                    echo "DB Container  : ${env.DB_CONTAINER}"
+                    echo "Network       : ${env.NETWORK_NAME}"
+                    echo "Host Port     : ${env.HOST_PORT}"
+                    echo "Run Tests     : ${params.RUN_TESTS}"
                     echo "==============================================="
                 }
             }
         }
 
-
         stage('Checkout Selected Branch') {
-
             steps {
 
                 bat """
@@ -119,11 +110,9 @@ pipeline {
             }
         }
 
-
         stage('Run Tests') {
 
             when {
-
                 expression {
                     params.RUN_TESTS == 'YES'
                 }
@@ -143,11 +132,9 @@ pipeline {
             }
         }
 
-
         stage('Build Docker Image') {
 
             when {
-
                 expression {
                     params.ACTION == 'DEPLOY'
                 }
@@ -161,19 +148,15 @@ pipeline {
                     docker build -t customer-app:${params.VERSION} .
                 """
 
-                echo "Validating Docker image..."
-
                 bat """
                     docker image inspect customer-app:${params.VERSION}
                 """
             }
         }
 
-
         stage('Deploy Environment') {
 
             when {
-
                 expression {
                     params.ACTION == 'DEPLOY'
                 }
@@ -191,22 +174,20 @@ pipeline {
                     echo "Deploying ${params.ENVIRONMENT} environment..."
 
                     bat """
-                        set VERSION=${params.VERSION}
-                        set DB_PASSWORD=%DB_PASSWORD%
+                        set "VERSION=${params.VERSION}"
+                        set "DB_PASSWORD=%DB_PASSWORD%"
 
-                        docker compose --profile ${env.PROFILE} down
+                        docker compose down ${env.COMPOSE_SERVICES}
 
-                        docker compose --profile ${env.PROFILE} up -d
+                        docker compose up -d ${env.COMPOSE_SERVICES}
                     """
                 }
             }
         }
 
-
         stage('Validate Deployment') {
 
             when {
-
                 expression {
                     params.ACTION == 'DEPLOY'
                 }
@@ -214,25 +195,25 @@ pipeline {
 
             steps {
 
-                echo "Waiting for containers to become healthy..."
+                echo "Waiting for containers..."
 
                 bat """
                     timeout /t 20 /nobreak
                 """
 
-                echo "Checking running containers..."
+                echo "Checking containers..."
 
                 bat """
                     docker ps
                 """
 
-                echo "Checking application container..."
+                echo "Checking application..."
 
                 bat """
                     docker inspect ${env.APP_CONTAINER}
                 """
 
-                echo "Checking database container..."
+                echo "Checking database..."
 
                 bat """
                     docker inspect ${env.DB_CONTAINER}
@@ -260,11 +241,9 @@ pipeline {
             }
         }
 
-
         stage('Rollback') {
 
             when {
-
                 expression {
                     params.ACTION == 'ROLLBACK'
                 }
@@ -279,15 +258,13 @@ pipeline {
                     )
                 ]) {
 
-                    echo "Starting rollback..."
-
                     bat """
-                        set VERSION=${params.VERSION}
-                        set DB_PASSWORD=%DB_PASSWORD%
+                        set "VERSION=${params.VERSION}"
+                        set "DB_PASSWORD=%DB_PASSWORD%"
 
-                        docker compose --profile ${env.PROFILE} down
+                        docker compose down ${env.COMPOSE_SERVICES}
 
-                        docker compose --profile ${env.PROFILE} up -d
+                        docker compose up -d ${env.COMPOSE_SERVICES}
                     """
                 }
 
@@ -306,17 +283,13 @@ pipeline {
                 bat """
                     curl --fail http://localhost:${env.HOST_PORT}/db-health
                 """
-
-                echo "Rollback validation completed."
             }
         }
     }
 
-
     post {
 
         success {
-
             echo "==============================================="
             echo "DEPLOYMENT SUCCESSFUL"
             echo "Environment: ${params.ENVIRONMENT}"
@@ -325,7 +298,6 @@ pipeline {
         }
 
         failure {
-
             echo "==============================================="
             echo "DEPLOYMENT FAILED"
             echo "Environment: ${params.ENVIRONMENT}"
