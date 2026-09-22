@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 import os
 
 from customer_repository import get_customers
+from database import check_database_connection
 
 app = Flask(__name__)
 
@@ -32,6 +33,22 @@ def version():
     return jsonify({
         "version": VERSION
     })
+
+
+@app.route("/db-health")
+def db_health():
+    if check_database_connection():
+        return jsonify({
+            "status": "healthy",
+            "database": "connected",
+            "environment": ENVIRONMENT
+        }), 200
+
+    return jsonify({
+        "status": "unhealthy",
+        "database": "disconnected",
+        "environment": ENVIRONMENT
+    }), 500
 
 
 @app.route("/customers/search")
