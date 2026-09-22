@@ -107,7 +107,7 @@ pipeline {
                     echo "Version        : ${params.VERSION}"
                     echo "Git Branch     : ${env.GIT_BRANCH_NAME}"
                     echo "App Container  : ${env.APP_CONTAINER}"
-                    echo "DB Container   : ${env.DB_CONTAINER}"
+                    echo "DB Container    : ${env.DB_CONTAINER}"
                     echo "Network        : ${env.NETWORK_NAME}"
                     echo "Host Port      : ${env.HOST_PORT}"
                     echo "Environment Val: ${env.ENV_VALUE}"
@@ -210,14 +210,19 @@ pipeline {
                     echo "Deploying ${params.ENVIRONMENT}..."
 
                     bat """
-                        set "PATH=C:\\Users\\Administrator\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;%PATH%"
-
                         set "VERSION=${params.VERSION}"
                         set "DB_PASSWORD=%DB_PASSWORD%"
 
-                        docker compose down ${env.COMPOSE_SERVICES}
+                        echo Using Docker Compose:
+                        "C:\\Users\\Administrator\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker-compose.exe" version
 
-                        docker compose up -d ${env.COMPOSE_SERVICES}
+                        echo Stopping existing environment...
+
+                        "C:\\Users\\Administrator\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker-compose.exe" down ${env.COMPOSE_SERVICES}
+
+                        echo Starting environment...
+
+                        "C:\\Users\\Administrator\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker-compose.exe" up -d ${env.COMPOSE_SERVICES}
                     """
                 }
             }
@@ -236,7 +241,7 @@ pipeline {
 
             steps {
 
-                echo "Waiting for containers..."
+                echo "Waiting for containers to start..."
 
                 bat """
                     timeout /t 20 /nobreak
@@ -261,6 +266,13 @@ pipeline {
 
                 bat """
                     docker inspect ${env.DB_CONTAINER}
+                """
+
+
+                echo "Checking Docker network..."
+
+                bat """
+                    docker network inspect ${env.NETWORK_NAME}
                 """
 
 
@@ -292,6 +304,13 @@ pipeline {
                 """
 
 
+                echo "Checking requested Docker image..."
+
+                bat """
+                    docker image inspect customer-app:${params.VERSION}
+                """
+
+
                 echo "Deployment validation completed successfully."
             }
         }
@@ -319,32 +338,46 @@ pipeline {
                     echo "Starting rollback..."
 
                     bat """
-                        set "PATH=C:\\Users\\Administrator\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;%PATH%"
-
                         set "VERSION=${params.VERSION}"
                         set "DB_PASSWORD=%DB_PASSWORD%"
 
-                        docker compose down ${env.COMPOSE_SERVICES}
+                        echo Using Docker Compose:
 
-                        docker compose up -d ${env.COMPOSE_SERVICES}
+                        "C:\\Users\\Administrator\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker-compose.exe" version
+
+                        echo Stopping current environment...
+
+                        "C:\\Users\\Administrator\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker-compose.exe" down ${env.COMPOSE_SERVICES}
+
+                        echo Starting rollback version...
+
+                        "C:\\Users\\Administrator\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker-compose.exe" up -d ${env.COMPOSE_SERVICES}
                     """
                 }
 
+
+                echo "Waiting for rollback containers..."
 
                 bat """
                     timeout /t 20 /nobreak
                 """
 
 
+                echo "Checking rollback containers..."
+
                 bat """
                     docker ps
                 """
 
 
+                echo "Checking rollback application health..."
+
                 bat """
                     curl --fail http://localhost:${env.HOST_PORT}/health
                 """
 
+
+                echo "Checking rollback database connectivity..."
 
                 bat """
                     curl --fail http://localhost:${env.HOST_PORT}/db-health
@@ -365,8 +398,9 @@ pipeline {
             echo "       DEPLOYMENT SUCCESSFUL"
             echo "==============================================="
 
-            echo "Environment: ${params.ENVIRONMENT}"
-            echo "Version: ${params.VERSION}"
+            echo "Environment : ${params.ENVIRONMENT}"
+            echo "Action      : ${params.ACTION}"
+            echo "Version     : ${params.VERSION}"
 
             echo "==============================================="
         }
@@ -378,8 +412,9 @@ pipeline {
             echo "       DEPLOYMENT FAILED"
             echo "==============================================="
 
-            echo "Environment: ${params.ENVIRONMENT}"
-            echo "Version: ${params.VERSION}"
+            echo "Environment : ${params.ENVIRONMENT}"
+            echo "Action      : ${params.ACTION}"
+            echo "Version     : ${params.VERSION}"
 
             echo "==============================================="
         }
