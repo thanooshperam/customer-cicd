@@ -156,6 +156,81 @@ pipeline {
         }
 
 
+        /*
+         * ============================================================
+         * RECORD PREVIOUS PRODUCTION IMAGE
+         * ============================================================
+         *
+         * This stage is required only for a PRODUCTION deployment.
+         *
+         * DEV and UAT do not need a previous production image because
+         * automatic production rollback is not being performed there.
+         */
+
+        stage('Record Previous Production Image') {
+
+            when {
+
+                allOf {
+
+                    expression {
+                        params.ACTION == 'DEPLOY'
+                    }
+
+                    expression {
+                        params.ENVIRONMENT == 'PRODUCTION'
+                    }
+                }
+            }
+
+            steps {
+
+                script {
+
+                    echo "Recording currently running production image..."
+
+                    def previousImage = bat(
+                        script: """
+                            @echo off
+                            docker inspect --format="{{.Config.Image}}" ${env.APP_CONTAINER}
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+
+                    if (!previousImage) {
+
+                        error(
+                            "Unable to determine previous image for ${env.APP_CONTAINER}"
+                        )
+                    }
+
+
+                    echo "Previous Image : ${previousImage}"
+
+
+                    if (!previousImage.contains(':')) {
+
+                        error(
+                            "Previous image does not contain a version tag: ${previousImage}"
+                        )
+                    }
+
+
+                    env.PREVIOUS_IMAGE = previousImage
+
+                    env.PREVIOUS_VERSION =
+                        previousImage.substring(
+                            previousImage.lastIndexOf(':') + 1
+                        )
+
+
+                    echo "Previous Version: ${env.PREVIOUS_VERSION}"
+                }
+            }
+        }
+
+
         stage('Build Docker Image') {
 
             when {
@@ -194,6 +269,21 @@ pipeline {
             }
 
             steps {
+
+                script {
+
+                    /*
+                     * Mark deployment as started before changing
+                     * the running environment.
+                     *
+                     * If anything after this point fails,
+                     * the post-failure section can restore
+                     * the previous production version.
+                     */
+
+                    env.DEPLOYMENT_STARTED = 'true'
+                }
+
 
                 withCredentials([
                     string(
@@ -312,6 +402,19 @@ pipeline {
         }
 
 
+        /*
+         * ============================================================
+         * MANUAL ROLLBACK
+         * ============================================================
+         *
+         * This is the explicit ROLLBACK action selected by the user.
+         *
+         * Example:
+         * ENVIRONMENT = PRODUCTION
+         * ACTION      = ROLLBACK
+         * VERSION     = 1.0.0
+         */
+
         stage('Rollback') {
 
             when {
@@ -331,7 +434,8 @@ pipeline {
                     )
                 ]) {
 
-                    echo "Starting rollback..."
+                    echo "Starting manual rollback..."
+                    echo "Rollback Version: ${params.VERSION}"
 
                     bat """
                         set "VERSION=${params.VERSION}"
@@ -380,11 +484,24 @@ pipeline {
                 """
 
 
+                echo "Checking rollback application version..."
+
+                bat """
+                    curl --fail http://localhost:${env.HOST_PORT}/version
+                """
+
+
                 echo "Rollback validation completed."
             }
         }
     }
 
+
+    /*
+     * ================================================================
+     * POST ACTIONS
+     * ================================================================
+     */
 
     post {
 
@@ -413,6 +530,113 @@ pipeline {
             echo "Version     : ${params.VERSION}"
 
             echo "==============================================="
+
+
+            script {
+
+                /*
+                 * ====================================================
+                 * AUTOMATIC PRODUCTION ROLLBACK
+                 * ====================================================
+                 *
+                 * Automatic rollback happens only when:
+                 *
+                 * 1. ACTION is DEPLOY
+                 * 2. ENVIRONMENT is PRODUCTION
+                 * 3. Deployment actually started
+                 * 4. Previous production image was recorded
+                 *
+                 * If tests fail before deployment starts,
+                 * production is NOT touched.
+                 */
+
+                if (
+                    params.ACTION == 'DEPLOY' &&
+                    params.ENVIRONMENT == 'PRODUCTION' &&
+                    env.DEPLOYMENT_STARTED == 'true' &&
+                    env.PREVIOUS_VERSION?.trim()
+                ) {
+
+                    echo "==============================================="
+                    echo "       AUTOMATIC ROLLBACK STARTING"
+                    echo "==============================================="
+
+                    echo "Failed Version  : ${params.VERSION}"
+                    echo "Previous Version: ${env.PREVIOUS_VERSION}"
+                    echo "Previous Image  : ${env.PREVIOUS_IMAGE}"
+
+
+                    withCredentials([
+                        string(
+                            credentialsId: 'customer-db-password',
+                            variable: 'DB_PASSWORD'
+                        )
+                    ]) {
+
+                        bat """
+                            set "VERSION=${env.PREVIOUS_VERSION}"
+                            set "DB_PASSWORD=%DB_PASSWORD%"
+
+                            echo Restoring previous production version...
+
+                            "C:\\Users\\Administrator\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker-compose.exe" down ${env.COMPOSE_SERVICES}
+
+                            "C:\\Users\\Administrator\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker-compose.exe" up -d ${env.COMPOSE_SERVICES}
+                        """
+                    }
+
+
+                    echo "Waiting for rollback containers..."
+
+                    bat """
+                        ping 127.0.0.1 -n 21 > nul
+                    """
+
+
+                    echo "Checking rollback containers..."
+
+                    bat """
+                        docker ps
+                    """
+
+
+                    echo "Checking rollback application health..."
+
+                    bat """
+                        curl --fail http://localhost:${env.HOST_PORT}/health
+                    """
+
+
+                    echo "Checking rollback database connectivity..."
+
+                    bat """
+                        curl --fail http://localhost:${env.HOST_PORT}/db-health
+                    """
+
+
+                    echo "Checking restored application version..."
+
+                    bat """
+                        curl --fail http://localhost:${env.HOST_PORT}/version
+                    """
+
+
+                    echo "==============================================="
+                    echo "       AUTOMATIC ROLLBACK COMPLETED"
+                    echo "==============================================="
+
+                    echo "Restored Version: ${env.PREVIOUS_VERSION}"
+
+                    echo "The deployment remains FAILED because the"
+                    echo "requested production deployment did not pass validation."
+
+                    echo "==============================================="
+
+                } else {
+
+                    echo "Automatic production rollback was not required."
+                }
+            }
         }
 
 
