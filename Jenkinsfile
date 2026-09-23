@@ -254,14 +254,14 @@ pipeline {
                 echo "Checking application container..."
 
                 bat """
-                    docker inspect ${env.APP_CONTAINER}
+                    docker inspect --format="{{.Name}} | Status={{.State.Status}} | Health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}" ${env.APP_CONTAINER}
                 """
 
 
                 echo "Checking database container..."
 
                 bat """
-                    docker inspect ${env.DB_CONTAINER}
+                    docker inspect --format="{{.Name}} | Status={{.State.Status}} | Health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}" ${env.DB_CONTAINER}
                 """
 
 
